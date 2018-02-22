@@ -1,0 +1,36 @@
+{
+  "name": "conectric-usb-gateway",
+  "version": "1.0.0",
+  "description": "Conectric USB IoT Gateway Library",
+  "main": "index.js",
+  "scripts": {},
+  "keywords": [
+    "IoT",
+    "Conectric",
+    "sensors",
+    "mesh",
+    "pir",
+    "temperature",
+    "environment",
+    "humidity",
+    "motion",
+    "energy"
+  ],
+  "author": "Conectric Networks",
+  "license": "MIT",
+  "dependencies": {
+    "joi": "^13.1.2",
+    "memory-cache-ttl": "^1.0.52",
+    "moment": "^2.20.1",
+    "round-to": "^2.0.0",
+    "serialport": "^6.0.5",
+    "usb": "^1.3.1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Conectric/conectric-usb-gateway.git"
+  },
+  "engines": {
+    "node": ">=8.9.4"
+  }
+}
