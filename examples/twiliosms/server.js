@@ -7,7 +7,7 @@ const TWILIO_PHONE_NUMBER = process.env.TWILIO_PHONE_NUMBER;
 const TWILIO_DESTINATION_PHONE_NUMBER = process.env.TWILIO_DESTINATION_PHONE_NUMBER;
 
 if (! TWILIO_ACCOUNT_SID || ! TWILIO_AUTH_TOKEN || ! TWILIO_PHONE_NUMBER || ! TWILIO_DESTINATION_PHONE_NUMBER) {
-    console.error('Please set all of the following environment variables: TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER');
+    console.error('Please set all of the following environment variables: TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER, TWILIO_DESTINATION_PHONE_NUMBER');
     process.exit(1);
 }
 

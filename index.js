@@ -71,21 +71,25 @@ const conectricUsbGateway = {
 
     handleUSBEvents: () => {
         usb.on('attach', function(device) { 
-            console.log('USB Device Attached.'); 
-            setTimeout(conectricUsbGateway.startGateway, 200) 
+            if (conectricUsbGateway.isConectricRouter(device)) {
+                console.log('USB Router device attached.');
+                setTimeout(conectricUsbGateway.startGateway, 200); 
+            }
         });
         usb.on('detach', function(device) { 
-            console.log('USB Device Removed.'); 
-            setTimeout(conectricUsbGateway.startGateway, 100) 
+            if (conectricUsbGateway.isConectricRouter(device)) {
+                console.log('USB Router device removed.');
+                setTimeout(conectricUsbGateway.startGateway, 100); 
+            }
         });        
     },
 
     startGateway: async function () {
         try {
             await conectricUsbGateway.findRouterDevice();
-            console.log(`Found router device at ${conectricUsbGateway.comName}.`);
+            console.log(`Found USB router device at ${conectricUsbGateway.comName}.`);
         } catch(e) {
-            console.log('Waiting for router device.');
+            console.log('Waiting for USB router device.');
             conectricUsbGateway.macAddress = undefined;
             conectricUsbGateway.parser = undefined;
             conectricUsbGateway.serialPort = undefined;
@@ -129,13 +133,22 @@ const conectricUsbGateway = {
         }, 1500);
     },
 
+    isConectricRouter: (device) => {
+        const descriptor = device.deviceDescriptor;
+        if (descriptor) {
+            return (descriptor.idVendor && descriptor.idVendor === 1027 && descriptor.idProduct && descriptor.idProduct === 24597);
+        }
+
+        return false;
+    },
+
     findRouterDevice: () => {
         return new Promise((resolve, reject) => {
             serialport.list((err, ports) => {
                 for (let n = 0; n < ports.length; n++) {
                     const port = ports[n];
 
-                    if (port.manufacturer === 'FTDI' && port.comName.indexOf('usbserial-') !== -1) {
+                    if (port.manufacturer && port.manufacturer === 'FTDI' && port.comName.indexOf('usbserial-') !== -1) {
                         conectricUsbGateway.comName = port.comName;
                         return resolve(port.comName);
                     }

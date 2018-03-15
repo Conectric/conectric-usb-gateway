@@ -8,6 +8,12 @@
 
 This module is Conectric's Node.js SDK that allows you to receive data from our wireless mesh network sensors.  We aim to get you up and running quickly, so that you can rapidly build applications or visualizations that use near real time temperature, humidity, motion detection and switch state data.
 
+Our introductory video provides a quick overview of the product.
+
+[![Introductory Video](video.jpg)](https://www.youtube.com/watch?v=aPfZNUkFKBM)
+
+We also published an [overview on Medium](https://medium.com/conectric-networks/announcing-conectrics-usb-iot-gateway-sensor-product-86087af7ae57).
+
 ## Hardware Requirements
 
 In order to use this module, you will require:
@@ -448,6 +454,9 @@ npm start
 
 Insert the Conectric USB stick into your computer and turn on any door sensors.  Once you open the door sensor (magnets apart) you should expect to see an SMS API call to Twilio which should trigger a text message to the phone whose number is set in `TWILIO_DESTINATION_PHONE_NUMBER`.
 
+We also published an overview of how to set up and use this example as an [article on Medium](https://medium.com/conectric-networks/door-open-alerts-with-twilio-and-conectrics-iot-sensor-product-for-node-js-65d67db97584).
+
+
 ### Example 4: Post Motion Events to a Slack Channel At A Configurable Minimum Interval
 
 **Location:** `examples/slackmotion`.
@@ -482,6 +491,8 @@ npm start
 ```
 
 Insert the Conectric USB stick into your computer then insert the batteries into your motion sensor(s).  Trigger a motion sensor by waving at it, which should cause a motion event to be reported in your Slack channel.  Subsequent messages will be sent to Slack when motion is detected if `TEMPERATURE_REPORTING_INTERVAL` seconds or more have passed since the last motion event was seen.
+
+We also published an overview of how to set up and use this example as an [article on Medium](https://medium.com/conectric-networks/movement-alerts-in-slack-with-conectrics-motion-sensor-iot-gateway-for-node-js-fcc77529e210).
 
 ### Example 5: Post Temperature Data to Elasticsearch
 
@@ -524,6 +535,8 @@ npm start
 ```
 
 Insert the Conectric USB stick into your computer.  After a short while you should see temperature and humidity readings appear in Elasticsearch from any Conectric temperature sensors that you have nearby.
+
+We also published an overview of how to set up and use this example as an [article on Medium](https://medium.com/conectric-networks/visualizing-room-climate-data-with-conectrics-iot-sensors-elasticsearch-grafana-3254265bf35a).
 
 ## Power Management Tips
 
