@@ -15,6 +15,7 @@ const conectricUsbGateway = {
         '30': 'tempHumidity',
         '31': 'switch',
         '32': 'motion',
+        '37': 'rs485',
         '60': 'boot',
         '61': 'text'
     },
@@ -222,7 +223,7 @@ const conectricUsbGateway = {
 
         const payloadLength = parseInt(data.substring(0 + (headerLength * 2), 2 + (headerLength * 2)), 16);
         const battery = parseInt(data.substring(4 + (headerLength * 2), 6 + (headerLength * 2)), 16) / 10;
-        const messageData = data.substring(4 + (headerLength * 2));
+        const messageData = data.substring(6 + (headerLength * 2));
         
         const message = {
             type: messageTypeString,
@@ -298,7 +299,12 @@ const conectricUsbGateway = {
                         // Not sending boot message to callback.
                         return;
                     }
+                case 'rs485':
+                    message.payload.battery = battery;
+                    message.payload.rs485 = messageData;
+                    break;
                 case 'text':
+                    message.payload.battery = battery;
                     message.payload.text = messageData;
                     break;
                 default:
