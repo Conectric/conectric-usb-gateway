@@ -15,7 +15,8 @@ const conectricUsbGateway = {
         '30': 'tempHumidity',
         '31': 'switch',
         '32': 'motion',
-        '60': 'boot'
+        '60': 'boot',
+        '61': 'text'
     },
 
     PARAM_SCHEMA: Joi.object().keys({
