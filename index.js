@@ -15,7 +15,9 @@ const conectricUsbGateway = {
         '30': 'tempHumidity',
         '31': 'switch',
         '32': 'motion',
-        '60': 'boot'
+        '37': 'rs485',
+        '60': 'boot',
+        '61': 'text'
     },
 
     PARAM_SCHEMA: Joi.object().keys({
@@ -116,9 +118,9 @@ const conectricUsbGateway = {
                 // Found mac address.
                 conectricUsbGateway.macAddress = `${data.substring(3)}`;
                 console.log(`USB router mac address is ${conectricUsbGateway.macAddress}.`);
-            } else if (data === 'DB:Ok') {
+            } else if (data === 'DP:Ok') {
                 // Dump buffer was acknowledged OK.
-                console.log('Switched gateway to dump buffer mode.');
+                console.log('Switched gateway to dump payload mode.');
             } else {
                 if (! conectricUsbGateway.KNOWN_COMMANDS.includes(data)) {
                     if (conectricUsbGateway.params.debugMode) {
@@ -129,7 +131,7 @@ const conectricUsbGateway = {
         });
         
         setTimeout(function() {
-            conectricUsbGateway.serialPort.write('DB\nMR\n');
+            conectricUsbGateway.serialPort.write('DP\nMR\n');
         }, 1500);
     },
 
@@ -176,8 +178,8 @@ const conectricUsbGateway = {
 
         // Get to the message type value first so we can drop message
         // types that are not intended for the end user.
-        const headerLength = parseInt(data.substring(22, 24), 16);
-        const messageType = data.substring(24 + (headerLength * 2), 26 + (headerLength * 2));
+        const headerLength = parseInt(data.substring(0, 2), 16);
+        const messageType = data.substring(2 + (headerLength * 2), 4 + (headerLength * 2));
 
         if (conectricUsbGateway.IGNORABLE_MESSAGE_TYPES.includes(messageType)) {
             // Drop this message and do no more work on it.
@@ -198,9 +200,9 @@ const conectricUsbGateway = {
             return;
         }
 
-        const destAddr = data.substring(10, 14);
-        const sourceAddr = data.substring(14, 18);
-        const sequenceNumber = parseInt(data.substring(24, 26), 16);
+        const destAddr = data.substring(8, 12);
+        const sourceAddr = data.substring(8, 12);
+        const sequenceNumber = parseInt(data.substring(2, 4), 16);
 
         // Check if we have cached this message before
         if (conectricUsbGateway.params.deDuplicateBursts) {
@@ -219,9 +221,9 @@ const conectricUsbGateway = {
             }
         }
 
-        const payloadLength = parseInt(data.substring(22 + (headerLength * 2), 24 + (headerLength * 2)), 16);
-        const battery = parseInt(data.substring(26 + (headerLength * 2), 28 + (headerLength * 2)), 16) / 10;
-        const messageData = data.substring(28 + (headerLength * 2));
+        const payloadLength = parseInt(data.substring(0 + (headerLength * 2), 2 + (headerLength * 2)), 16);
+        const battery = parseInt(data.substring(4 + (headerLength * 2), 6 + (headerLength * 2)), 16) / 10;
+        const messageData = data.substring(6 + (headerLength * 2));
         
         const message = {
             type: messageTypeString,
@@ -297,6 +299,14 @@ const conectricUsbGateway = {
                         // Not sending boot message to callback.
                         return;
                     }
+                case 'rs485':
+                    message.payload.battery = battery;
+                    message.payload.rs485 = messageData;
+                    break;
+                case 'text':
+                    message.payload.battery = battery;
+                    message.payload.text = messageData;
+                    break;
                 default:
                     if (conectricUsbGateway.params.debugMode) {
                         console.log(`Ignoring unknown message type "${messageType}"`);
