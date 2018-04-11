@@ -71,8 +71,10 @@ $ npm start
 
 Found router device at /dev/tty.usbserial-DB00VL3E.
 Gateway opened.
-Switched gateway to dump buffer mode.
-USB router mac address is 00124b0005141c71.
+Switched gateway to dump payload mode.
+USB router mac address is 00124b000513da40.
+USB router Contiki version: 3.x
+USB router Conectric version: 1.0.2
 { type: 'tempHumidity',
   payload: 
    { battery: 3,
@@ -351,6 +353,22 @@ gateway.runGateway({
 ```
 
 The MAC address is returned as a string.  This could for example be useful to use in a message that your callback function sends to a server, so that the originating gateway can be identified if your system has several of them.
+
+## Getting Version Information from the Gateway
+
+Should you need to know the gateway's Contiki OS version or Conectric firmware version, you can do so in your callback function as follows:
+
+```javascript
+const gateway = require('conectric-usb-gateway');
+
+gateway.runGateway({
+  onSensorMessage: (sensorMessage) => {
+    console.log(gateway.contikiVersion); // '3.x'
+    console.log(gateway.conectricVersion); // '1.0.2'
+    console.log(sensorMessage);
+  }
+});
+```
 
 ## Bundled Examples
 
