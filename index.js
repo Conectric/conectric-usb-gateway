@@ -125,10 +125,10 @@ const conectricUsbGateway = {
             } else if (data === 'DP:Ok') {
                 // Dump buffer was acknowledged OK.
                 console.log('Switched gateway to dump payload mode.');
-            } else if (data.startsWith('VER:Contiki')) {
+            } else if (data.toLowerCase().startsWith('ver:contiki')) {
                 conectricUsbGateway.contikiVersion = data.substring(12);
                 console.log(`USB router Contiki version: ${conectricUsbGateway.contikiVersion}`);
-            } else if (data.startsWith('VER:conectric-v')) {
+            } else if (data.toLowerCase().startsWith('ver:conectric-v')) {
                 conectricUsbGateway.conectricVersion = data.substring(15);
                 console.log(`USB router Conectric version: ${conectricUsbGateway.conectricVersion}`);
             } else {
