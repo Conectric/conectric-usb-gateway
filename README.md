@@ -37,6 +37,20 @@ The following sensor types are supported at this time:
   * Switch (door switch) sensor.
   * Combined temperature / humidity sensor.
 
+## Linux Dependencies
+
+If you are running Linux (e.g. Ubuntu) you will need to install the following before installing this module:
+
+```
+sudo apt install libusb-dev libusb libudev-dev libudev build-essential
+```
+
+You may need to use `apt-get` in place of `apt`, depending on your setup.  You may also need to request specific versions for some e.g. on Raspbian Stretch for Raspberry Pi:
+
+```
+sudo apt-get install libusb-dev libusb-1.0-0-dev libudev-dev build-essential
+```
+
 ## Node.js Version
 
 We recommend that you use [Node.js](https://nodejs.org) 8.9.4, or any subsequent long term stable (LTS) release.

@@ -125,6 +125,9 @@ const conectricUsbGateway = {
             } else if (data === 'DP:Ok') {
                 // Dump buffer was acknowledged OK.
                 console.log('Switched gateway to dump payload mode.');
+            } else if (data === 'SS:Ok') {
+                // Sink was acknowledged OK.
+                console.log('Switched gateway to sink mode.');
             } else if (data.toLowerCase().startsWith('ver:contiki')) {
                 conectricUsbGateway.contikiVersion = data.substring(12);
                 console.log(`USB router Contiki version: ${conectricUsbGateway.contikiVersion}`);
@@ -159,8 +162,13 @@ const conectricUsbGateway = {
             serialport.list((err, ports) => {
                 for (let n = 0; n < ports.length; n++) {
                     const port = ports[n];
+                    const lowerPortName = port.comName.toLowerCase();
 
-                    if (port.manufacturer && port.manufacturer === 'FTDI' && port.comName.indexOf('usbserial-') !== -1) {
+                    if (port.manufacturer && port.manufacturer === 'FTDI' && (
+                        lowerPortName.indexOf('usbserial-') !== -1 || 
+                        lowerPortName.indexOf('ttyusb') !== -1 ||
+                        lowerPortName.indexOf('com') !== -1)
+                    ) {
                         conectricUsbGateway.comName = port.comName;
                         return resolve(port.comName);
                     }
@@ -210,13 +218,15 @@ const conectricUsbGateway = {
             return;
         }
 
-        const destAddr = data.substring(8, 12);
         const sourceAddr = data.substring(8, 12);
         const sequenceNumber = parseInt(data.substring(2, 4), 16);
+        const payloadLength = parseInt(data.substring(0 + (headerLength * 2), 2 + (headerLength * 2)), 16);
+        const battery = parseInt(data.substring(4 + (headerLength * 2), 6 + (headerLength * 2)), 16) / 10;
+        const messageData = data.substring(6 + (headerLength * 2));
 
         // Check if we have cached this message before
         if (conectricUsbGateway.params.deDuplicateBursts) {
-            const cacheKey = `${destAddr}${sourceAddr}${sequenceNumber}`;
+            const cacheKey = `${sourceAddr}${sequenceNumber}${messageData}`;
 
             if (! cache.get(cacheKey)) {
                 // We have not dealt with this burst before.
@@ -230,10 +240,6 @@ const conectricUsbGateway = {
                 return;
             }
         }
-
-        const payloadLength = parseInt(data.substring(0 + (headerLength * 2), 2 + (headerLength * 2)), 16);
-        const battery = parseInt(data.substring(4 + (headerLength * 2), 6 + (headerLength * 2)), 16) / 10;
-        const messageData = data.substring(6 + (headerLength * 2));
         
         const message = {
             type: messageTypeString,
