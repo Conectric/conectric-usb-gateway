@@ -13,6 +13,8 @@ const conectricUsbGateway = {
     contikiVersion: undefined,
     conectricVersion: undefined,
 
+    BROADCAST_ADDRESS: 'ffff',
+    
     MESSAGE_TYPES: {
         '30': 'tempHumidity',
         '31': 'switch',
@@ -24,13 +26,22 @@ const conectricUsbGateway = {
 
     PARAM_SCHEMA: Joi.object().keys({
         onSensorMessage: Joi.func().required(),
+        onGatewayReady: Joi.func().optional(),
         sendRawData: Joi.boolean().optional(),
         sendBootMessages: Joi.boolean().optional(),
         sendDecodedPayload: Joi.boolean().optional(),
         useFahrenheitTemps: Joi.boolean().optional(),
         switchOpenValue: Joi.boolean().optional(),
         deDuplicateBursts: Joi.boolean().optional(),
+        decodeTextMessages: Joi.boolean().optional(),
         debugMode: Joi.boolean().optional()
+    }).required().options({
+        allowUnknown: false
+    }),
+
+    TEXT_MESSAGE_SCHEMA: Joi.object().keys({
+        message: Joi.string().min(1).max(250).required(),
+        destination: Joi.string().length(4).required()
     }).required().options({
         allowUnknown: false
     }),
@@ -43,7 +54,7 @@ const conectricUsbGateway = {
         const validationResult = Joi.validate(params, conectricUsbGateway.PARAM_SCHEMA);
 
         if (validationResult.error) {
-            console.error(validationResult.details);
+            console.error(validationResult.error.message);
             return;
         }
 
@@ -60,6 +71,11 @@ const conectricUsbGateway = {
         // deDuplicateBursts is on by default
         if (! params.hasOwnProperty('deDuplicateBursts')) {
             params.deDuplicateBursts = true;
+        }
+
+        // decodeTextMessages is on by default
+        if (! params.hasOwnProperty('decodeTextMessages')) {
+            params.decodeTextMessages = true;
         }
 
         // Establish cache if needed.
@@ -128,6 +144,11 @@ const conectricUsbGateway = {
             } else if (data === 'SS:Ok') {
                 // Sink was acknowledged OK.
                 console.log('Switched gateway to sink mode.');
+                
+                // Notify caller gateway is ready, if interested.
+                if (conectricUsbGateway.params.onGatewayReady) {
+                    conectricUsbGateway.params.onGatewayReady();
+                }
             } else if (data.toLowerCase().startsWith('ver:contiki')) {
                 conectricUsbGateway.contikiVersion = data.substring(12);
                 console.log(`USB router Contiki version: ${conectricUsbGateway.contikiVersion}`);
@@ -187,6 +208,66 @@ const conectricUsbGateway = {
         });
 
         return conectricUsbGateway.serialPort;
+    },
+
+    hexEncode: (message) => {
+        let encodedMessage = '';
+
+        for (let n = 0; n < message.length; n++) {
+            let encodedChar = message.charCodeAt(n).toString(16);
+
+            if (encodedChar.length === 1) {
+                encodedChar = `0${encodedChar}`;
+            }
+
+            encodedMessage = `${encodedMessage}${encodedChar}`;
+        }
+
+        return encodedMessage;
+    },
+
+    hexDecode: (message) => {
+        let decodedMessage = '';
+
+        for (let n = 0; n < message.length; n += 2) {
+            decodedMessage = `${decodedMessage}${String.fromCharCode(parseInt(message.substr(n, 2), 16))}`;
+        }
+
+        return decodedMessage;
+    },
+
+    sendTextMessage: (params) => {
+        const validationResult = Joi.validate(params, conectricUsbGateway.TEXT_MESSAGE_SCHEMA);
+
+        if (validationResult.error) {
+            console.error(validationResult.error.message);
+            return false;
+        }
+
+        let encodedPayload = conectricUsbGateway.hexEncode(params.message);
+
+        // length:
+        // 1 for the message type
+        // 1 for the length
+        // 2 for the destination
+        // 1 for the reserved part
+        // 1 for each letter in the message
+        let msgLen = 5 + params.message.length;
+        let hexLen = msgLen.toString(16);
+
+        if (hexLen.length === 1) {
+            hexLen = `0${hexLen}`;
+        }
+
+        let outboundMessage = `<${hexLen}61${params.destination}01${encodedPayload}`;
+                
+        if (conectricUsbGateway.params.debugMode) {
+            console.log(`Outbound text message: ${outboundMessage}`);
+        }
+
+        conectricUsbGateway.serialPort.write(`${outboundMessage}\n`);
+
+        return true;
     },
 
     parseMessage: (data) => {
@@ -321,7 +402,12 @@ const conectricUsbGateway = {
                     break;
                 case 'text':
                     message.payload.battery = battery;
-                    message.payload.text = messageData;
+
+                    if (conectricUsbGateway.params.decodeTextMessages) {
+                        message.payload.text = conectricUsbGateway.hexDecode(messageData);
+                    } else {
+                        message.payload.text = messageData;
+                    }
                     break;
                 default:
                     if (conectricUsbGateway.params.debugMode) {

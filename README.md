@@ -6,7 +6,7 @@
 
 ## Introduction
 
-This module is Conectric's Node.js SDK that allows you to receive data from our wireless mesh network sensors.  We aim to get you up and running quickly, so that you can rapidly build applications or visualizations that use near real time temperature, humidity, motion detection and switch state data.
+This module is Conectric's Node.js SDK that allows you to communicate with our wireless mesh network sensors.  We aim to get you up and running quickly, so that you can rapidly build applications or visualizations that use near real time temperature, humidity, motion detection and switch state data.
 
 Our introductory video provides a quick overview of the product.
 
@@ -129,6 +129,7 @@ Each message has a set of common keys.  Others only appear when certain gateway 
     * `motion`
     * `switch`
     * `tempHumidity`
+    * `text`
 
 ### boot
 
@@ -241,9 +242,38 @@ The `payload` for the `tempHumidity` message consists of the following keys:
 
 By default, values for `temperature` will be in degrees Celcius.  To receive values in degrees Fahrenheit, set the configuration option `useFahrenheightTemps` to `true` (see [Configuration Options](#configuration-options) section).
 
-## Callback Function
+### text
 
-This module deals with decoding the sensor broadcast messages from the mesh network, and handles all of the heavy lifting associated with that for you.  When you start the gateway module by invoking its `runGateway` method, you must pass it a configuration object containing a callback function that will be called every time a message is received from the mesh network.  You can disable some messages (for example sensor boot messages) using the configuration settings (see [Configuration Options](#configuration-options) section) in the case where your business logic doesn't need to see them.
+This message is received from another USB router or other network device.  The message JSON looks like:
+
+```json
+{ 
+  "type": "text",
+  "payload": { 
+    "battery": 3.2, 
+    "text": "Hello World this is a test!" 
+  },
+  "timestamp": 1524198664,
+  "sensorId": "da40",
+  "sequenceNumber": 10 
+}
+```
+
+The `payload` for the `text` message consists of the following keys:
+
+* `battery`: The sensor's battery level in volts.
+* `text`: The free text message string that was sent (up to 250 characters).
+
+By default, `text` will be decoded from the hex representation used on the network.  To receive raw hex data instead, set the configuration option `decodeTextMessages` to `false` (see [Configuration Options](#configuration-options) section).
+
+
+## Callback Functions
+
+This module deals with decoding the sensor broadcast messages from the mesh network, and handles all of the heavy lifting associated with that for you.  When you start the gateway module by invoking its `runGateway` method, you must pass it a configuration object containing a callback function that will be called every time a message is received from the mesh network.  A second callback function can also be supplied, and is called when the gateway is ready to send text messages to the network.
+
+You can disable some messages (for example sensor boot messages) using the configuration settings (see [Configuration Options](#configuration-options) section) in the case where your business logic doesn't need to see them.
+
+### onSensorData
 
 The object passed to the `runGateway` method must contain a key `onSensorData` whose value must be a function that takes a single parameter.  Values passed to that parameter will be JSON objects corresponding to the schemas described in [Message Types](#message-types).
 
@@ -277,6 +307,31 @@ gateway.runGateway({
 });
 ```
 
+### onGatewayReady
+
+This is an optional callback that should be provided if you want to know when the USB router has been inserted and the gateway has established communications with it and is ready to send messages.  Use this if you wish to use the text message sending functionality.
+
+```javascript
+const gateway = require('conectric-usb-gateway');
+
+gateway.runGateway({
+    onSensorMessage: (sensorMessage) => {
+        console.log(sensorMessage);
+    },
+    onGatewayReady: () => {
+        console.log('Gateway is ready.');
+        const res = gateway.sendTextMessage({
+            message: 'Hello World this is a test!',
+            destination: 'da40'
+        });
+
+        console.log(`${res === true ? 'Message sent.' : 'Error sending message.'}`);
+    }
+});
+```
+
+If you want to broadcast the text message to any listening routers, use `gateway.BROADCAST_ADDRESS` as the destination value.
+
 ## Configuration Options
 
 The object that is passed as the only parameter to the `runGateway` method can also contain any mixture of the following additional configuration keys.  Adding additional keys that are not documented here will result in an error message from `runGateway`.
@@ -302,6 +357,14 @@ Controls whether or not additional low level debugging is sent to `console.log` 
 * Possible values: `true | false`
 * Optional: yes
 * Default: `false`
+
+### decodeTextMessages
+
+Controls whether or not text message payloads are decoded from hex.
+
+* Possible values: `true | false`
+* Optional: yes
+* Default: `true`
 
 ### deDuplicateBursts
 
@@ -384,6 +447,33 @@ gateway.runGateway({
 });
 ```
 
+## Sending a Text Message
+
+To send a text message to another USB router, you will need to know the last 4 characters of that router's MAC address (see above for how to obtain this).
+
+Once you have that, simply call `sendTextMessage`:
+
+```javascript
+const gateway = require('conectric-usb-gateway');
+
+gateway.runGateway({
+    onSensorMessage: (sensorMessage) => {
+        console.log(sensorMessage);
+    },
+    onGatewayReady: () => {
+        console.log('Gateway is ready.');
+        const res = gateway.sendTextMessage({
+            message: 'Hello World this is a test!',
+            destination: 'da40'
+        });
+
+        console.log(`${res === true ? 'Message sent.' : 'Error sending message.'}`);
+    }
+});
+```
+
+This requires the gateway to be up and running, so should be called only once the `onGatewayReady` callback has been invoked.  If you want to broadcast the text message to any listening routers, use `gateway.BROADCAST_ADDRESS` as the destination value.
+
 ## Bundled Examples
 
 To get you started quickly, we have provided some basic example implementations that use the gateway module.  These are located in the `examples` folder.
@@ -443,7 +533,74 @@ npm start
 
 Insert the Conectric USB stick into your computer.  After a short while you should see messages from any Conectric sensors that are nearby arriving on your computer and being sent to the server URL.
 
-### Example 3: Send an SMS Message Via Twilio API When A Door Opens
+### Example 3: Send a Text Message to Another USB Router
+
+**Location:** `examples/textmessage`.
+
+**Sensors Required:** No sensors, requires two USB routers.
+
+**Description:** This example shows how to send a text message betweeen two routers.
+
+**Usage:** Before setting up this example, you will need to know the last 4 characters of the MAC address of the other USB router that will receive your message.  When you have this, store it in an environment variable:
+
+* `DESTINATION_ROUTER_ADDR`, set to the last 4 characters of the receiving USB router's MAC address e.g. `da40`.
+
+Once the environment variable has been set, follow these steps to install dependencies and set up npm:
+
+```shell
+mkdir iotgateway
+cd iotgateway
+npm init
+```
+
+Accept all the defaults, except "entry point", use `server.js` for that.  Then:
+
+```shell
+npm install --save conectric-usb-gateway
+cp node_modules/conectric-usb-gateway/examples/textmessage/server.js .
+```
+
+Don't start the gateway yet, we need to set up the second one first... On another computer, follow the instructions to set up Example 1: Log Incoming Messages.  Start the message logging example code, and insert the USB router whose MAC address ends with the `DESTINATION_ROUTER_ADDR` that was set on the first computer.
+
+Once the second computer reports that it is ready to receive messages, start the gateway on the first one:
+
+```shell
+npm start
+```
+
+It should start up and send the message:
+
+```shell
+> npm start
+
+Waiting for USB router device.
+USB Router device attached.
+Found USB router device at /dev/tty.usbserial-DB00VL5G.
+Gateway opened.
+Switched gateway to dump payload mode.
+USB router mac address is 00124b000513da7f.
+USB router Contiki version: 3.x
+USB router Conectric version: 1.0.2
+Switched gateway to sink mode.
+Gateway is ready.
+Message sent.
+```
+
+And the second computer should report receipt of the message, decode it and log it:
+
+```javascript
+{ type: 'text',
+  payload: { 
+    battery: 3.2, 
+    text: 'Hello World this is a test!' 
+  },
+  timestamp: 1524285294,
+  sensorId: 'ffff',
+  sequenceNumber: 0 
+}
+```
+
+### Example 4: Send an SMS Message Via Twilio API When A Door Opens
 
 **Location:** `examples/twiliosms`.
 
@@ -489,7 +646,7 @@ Insert the Conectric USB stick into your computer and turn on any door sensors. 
 We also published an overview of how to set up and use this example as an [article on Medium](https://medium.com/conectric-networks/door-open-alerts-with-twilio-and-conectrics-iot-sensor-product-for-node-js-65d67db97584).
 
 
-### Example 4: Post Motion Events to a Slack Channel At A Configurable Minimum Interval
+### Example 5: Post Motion Events to a Slack Channel At A Configurable Minimum Interval
 
 **Location:** `examples/slackmotion`.
 
@@ -526,7 +683,7 @@ Insert the Conectric USB stick into your computer then insert the batteries into
 
 We also published an overview of how to set up and use this example as an [article on Medium](https://medium.com/conectric-networks/movement-alerts-in-slack-with-conectrics-motion-sensor-iot-gateway-for-node-js-fcc77529e210).
 
-### Example 5: Post Temperature Data to Elasticsearch
+### Example 6: Post Temperature Data to Elasticsearch
 
 **Location:** `examples/elastic`.
 
