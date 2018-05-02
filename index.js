@@ -396,6 +396,7 @@ const conectricUsbGateway = {
                         // Not sending boot message to callback.
                         return;
                     }
+                    break;
                 case 'rs485':
                     message.payload.battery = battery;
                     message.payload.rs485 = messageData;

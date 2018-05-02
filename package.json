@@ -1,6 +1,6 @@
 {
   "name": "conectric-usb-gateway",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "Conectric USB IoT Gateway Library",
   "main": "index.js",
   "scripts": {},
