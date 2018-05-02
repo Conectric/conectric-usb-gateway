@@ -1,8 +1,8 @@
-![Conectric Logo](logo.png)
+![Conectric Logo](https://raw.githubusercontent.com/Conectric/conectric-usb-gateway/master/logo.png)
 
 # Conectric USB Gateway Module for Node.js
 
-![Conectric USB Router](usbstick.jpg)
+![Conectric USB Router](https://raw.githubusercontent.com/Conectric/conectric-usb-gateway/master/usbstick.jpg)
 
 ## Introduction
 
@@ -10,7 +10,7 @@ This module is Conectric's Node.js SDK that allows you to communicate with our w
 
 Our introductory video provides a quick overview of the product.
 
-[![Introductory Video](video.jpg)](https://www.youtube.com/watch?v=aPfZNUkFKBM)
+[![Introductory Video](https://raw.githubusercontent.com/Conectric/conectric-usb-gateway/master/video.jpg)](https://www.youtube.com/watch?v=aPfZNUkFKBM)
 
 We also published an [overview on Medium](https://medium.com/conectric-networks/announcing-conectrics-usb-iot-gateway-sensor-product-86087af7ae57).
 
