@@ -6,13 +6,15 @@
 
 ## Introduction
 
-This module is Conectric's Node.js SDK that allows you to communicate with our wireless mesh network sensors.  We aim to get you up and running quickly, so that you can rapidly build applications or visualizations that use near real time temperature, humidity, motion detection and switch state data.
+This module is Conectric's Node.js SDK that allows you to communicate with our wireless mesh network sensors.  We aim to get you up and running quickly, so that you can rapidly build applications or visualizations that use near real time temperature, humidity, motion detection and switch state data.  You can also use this module to communicate with devices that use the [RS-485 protocol](https://en.wikipedia.org/wiki/RS-485).
 
 Our introductory video provides a quick overview of the product.
 
 [![Introductory Video](https://raw.githubusercontent.com/Conectric/conectric-usb-gateway/master/video.jpg)](https://www.youtube.com/watch?v=aPfZNUkFKBM)
 
 We also published an [overview on Medium](https://medium.com/conectric-networks/announcing-conectrics-usb-iot-gateway-sensor-product-86087af7ae57).
+
+You can find details of the mesh network protocol site [on GitHub](https://github.com/ekawahyu/contiki/blob/develop/examples/conectric/README.md).
 
 ## Hardware Requirements
 
@@ -36,6 +38,7 @@ The following sensor types are supported at this time:
   * Motion (PIR) sensor.
   * Switch (door switch) sensor.
   * Combined temperature / humidity sensor.
+  * Wireless RS-485 module.
 
 ## Linux Dependencies
 
@@ -111,7 +114,7 @@ gateway.runGateway({
   }
 });
 ```
-## Message Types
+## Incoming Message Types
 
 This module works by decoding sensor broadcast messages from the mesh network, then translating them into JSON objects which are then supplied to your callback function where your business logic happens.
 
@@ -119,6 +122,8 @@ Depending on how you configure this module (see [Configuration Options](#configu
 
 Each message has a set of common keys.  Others only appear when certain gateway configuration values are set in your code's call to `runGateway`:
 
+* `numHops`: (present if `sendHopData` option is set to `true`).  Value will be a number indicating the number of network hops that the message took.
+* `maxHops`: (present if `sendHopData` option is set to `true`).   Value will be a number indicating the maximum number of allowed network hops (`0` = unlimited).
 * `payload`: (present unless `sendDecodedPayload` option is set to `false`).  Value will be an object whose schema varies depending on the value of `type`, see the next few sections for examples of each type of payload.
 * `timestamp`: (always present) UNIX timestamp for when the gateway received the message from the mesh network.
 * `rawData`: (present if `sendRawData` option is set to `true`).  Value will be the raw hex data for the message as received from the mesh network.  This is mostly useful for debugging this module, end users should use values from `payload`.
@@ -127,6 +132,9 @@ Each message has a set of common keys.  Others only appear when certain gateway 
 * `type`: (always present) indicates which type of message was received, values are:
     * `boot`
     * `motion`
+    * `rs485Config`
+    * `rs485Request`
+    * `rs485Response`
     * `switch`
     * `tempHumidity`
     * `text`
@@ -180,6 +188,30 @@ The `payload` for the `motion` message consists of the following keys:
 
 * `battery`: The sensor's battery level in volts.
 * `motion`: Will always be `true` as the sensor only fires when motion is detected.
+
+### rs485Response
+
+This message is sent from a wireless RS-485 module in reponse to a request sent from the USB router to the RS-485 module.  See RS-485 Messaging section of this document for details of how to send a request.
+
+The message JSON looks like:
+
+```json
+{ 
+  "type": "rs485Response",
+  "payload": { 
+    "battery": 3.1, 
+    "rs485": "0110000062b9fe" 
+  },
+  "timestamp": 1527654307,
+  "sensorId": "dfbc",
+  "sequenceNumber": 1
+}
+```
+
+The `payload` for the `rs485Response` message consists of the following keys:
+
+* `battery`: The sensor's battery level in volts.
+* `rs485`: Data coming back from the RS-485 device in response to data sent in an `rs485Request` message (See RS-485 Messaging section of this document).  The format and encoding of this data will depend on your RS-485 device.
 
 ### switch
 
@@ -251,7 +283,7 @@ This message is received from another USB router or other network device.  The m
   "type": "text",
   "payload": { 
     "battery": 3.2, 
-    "text": "Hello World this is a test!" 
+    "text": "Hello World this is a test." 
   },
   "timestamp": 1524198664,
   "sensorId": "da40",
@@ -266,7 +298,6 @@ The `payload` for the `text` message consists of the following keys:
 
 By default, `text` will be decoded from the hex representation used on the network.  To receive raw hex data instead, set the configuration option `decodeTextMessages` to `false` (see [Configuration Options](#configuration-options) section).
 
-
 ## Callback Functions
 
 This module deals with decoding the sensor broadcast messages from the mesh network, and handles all of the heavy lifting associated with that for you.  When you start the gateway module by invoking its `runGateway` method, you must pass it a configuration object containing a callback function that will be called every time a message is received from the mesh network.  A second callback function can also be supplied, and is called when the gateway is ready to send text messages to the network.
@@ -277,7 +308,7 @@ You can disable some messages (for example sensor boot messages) using the confi
 
 The object passed to the `runGateway` method must contain a key `onSensorData` whose value must be a function that takes a single parameter.  Values passed to that parameter will be JSON objects corresponding to the schemas described in [Message Types](#message-types).
 
-Here's an example implementation that can process each type of message and display relevant data:
+Here's an example implementation that can process several types of incoming message and display relevant data:
 
 ```javascript
 const gateway = require('conectric-usb-gateway');
@@ -309,7 +340,7 @@ gateway.runGateway({
 
 ### onGatewayReady
 
-This is an optional callback that should be provided if you want to know when the USB router has been inserted and the gateway has established communications with it and is ready to send messages.  Use this if you wish to use the text message sending functionality.
+This is an optional callback that should be provided if you want to know when the USB router has been inserted and the gateway has established communications with it and is ready to send messages.  Use this if you wish to use the text message sending or RS-485 functionality.
 
 ```javascript
 const gateway = require('conectric-usb-gateway');
@@ -321,7 +352,7 @@ gateway.runGateway({
     onGatewayReady: () => {
         console.log('Gateway is ready.');
         const res = gateway.sendTextMessage({
-            message: 'Hello World this is a test!',
+            message: 'Hello World this is a test.',
             destination: 'da40'
         });
 
@@ -330,7 +361,7 @@ gateway.runGateway({
 });
 ```
 
-If you want to broadcast the text message to any listening routers, use `gateway.BROADCAST_ADDRESS` as the destination value.
+If you want to broadcast the text message to any listening routers, use `gateway.BROADCAST_ALL_ADDRESS` as the destination value.  To broadcast to those a single network hop away, use `gateway.BROADCAST_LOCAL_ADDRESS`.
 
 ## Configuration Options
 
@@ -389,6 +420,16 @@ If `true`, messages supplied to the `onSensorData` callback will contain a `payl
 * Possible values: `true | false`
 * Optional: yes
 * Default: `true`
+
+### sendHopData
+
+If `true`, messages supplied to the `onSensorData` callback will contain two extra keys:
+
+* `numHops`: The number of wireless hops that the message took across the network
+* `maxHops`: The maximum number of hops that the network allows (0 = unlimited)
+* Possible values: `true | false`
+* Optional: yes
+* Default: `false`
 
 ### sendRawData
 
@@ -463,7 +504,7 @@ gateway.runGateway({
     onGatewayReady: () => {
         console.log('Gateway is ready.');
         const res = gateway.sendTextMessage({
-            message: 'Hello World this is a test!',
+            message: 'Hello World this is a test.',
             destination: 'da40'
         });
 
@@ -472,7 +513,104 @@ gateway.runGateway({
 });
 ```
 
-This requires the gateway to be up and running, so should be called only once the `onGatewayReady` callback has been invoked.  If you want to broadcast the text message to any listening routers, use `gateway.BROADCAST_ADDRESS` as the destination value.
+This requires the gateway to be up and running, so should be called only once the `onGatewayReady` callback has been invoked.  If you want to broadcast the text message to any listening routers, use `gateway.BROADCAST_ALL_ADDRESS` as the destination value.  Use `gateway.BROADCAST_LOCAL_ADDRESS` to broadcast to local neighboring devices only.
+
+Both `message` and `destination` are required parameters.
+
+## RS-485 Messaging
+
+Using Conectric's wireless RS-485 module, messages can be exchanged with devices that use the RS-485 protocol.
+
+### Sending an RS-485 Configuration Message
+
+This message is used to configure serial communications with the RS-485 device attached to the wireless RS-485 module.
+
+The following parameters are all required when using `sendRS485ConfigMessage`:
+
+* `baudRate`: Valid values are `2400`, `4800`, `9600`, `19200`.
+* `parity`: Valid values are `gateway.PARITY_NONE`, `gateway.PARITY_ODD` and `gateway.PARITY_EVEN`.
+* `stopBits`: Valid values are `1` and `2`.
+* `destination`: The last 4 characters of the MAC address of the device that the message is destined for e.g. `da40`. 
+
+```javascript
+const gateway = require('conectric-usb-gateway');
+
+gateway.runGateway({
+    onSensorMessage: (sensorMessage) => {
+        console.log(sensorMessage);
+    },
+    onGatewayReady: () => {
+        console.log('Gateway is ready.');
+        const res = gateway.sendRS485ConfigMessage({
+          baudRate: 4800,
+          parity: gateway.PARITY_NONE,
+          stopBits: 1,
+          destination: 'da40'
+        });
+
+        console.log(`${res === true ? 'Message sent.' : 'Error sending message.'}`);
+    }
+});
+```
+
+This requires the gateway to be up and running, so should be called only once the `onGatewayReady` callback has been invoked.  If you want to broadcast the text message to any listening routers, use `gateway.BROADCAST_ALL_ADDRESS` as the destination value.  Use `gateway.BROADCAST_LOCAL_ADDRESS` to broadcast to local neighboring devices only.
+
+### Sending an RS-485 Request Message
+
+This message is used to send data to an RS-485 device connected to a Conectric RS-485 wireless module.  
+
+The following parameters are required:
+
+* `message`: A string of data to be sent to the RS-485 device.  The format / encoding of this data will depend on your RS-485 device.
+
+And the following are optional parameters:
+
+* `hexEncodePayload`: If set to `true`, the value of `message` will be hex encoded before being sent to the wireless RS-485 module.  If set to `false`, the value of `message` will be sent unchanged.  Defaults to `true`.
+
+```javascript
+const gateway = require('conectric-usb-gateway');
+  
+gateway.runGateway({
+  onSensorMessage: (sensorMessage) => {
+    console.log(sensorMessage);
+  },
+  onGatewayReady: () => {
+    console.log('Gateway is ready.');
+    gateway.sendRS485Request({
+      message: '010600000001480a',
+      destination: 'dfbc',
+      hexEncodePayload: false
+    });
+  }
+});
+
+```
+
+(Sends `010600000001480a` to RS-485 wireless module whose MAC address ends `dfbc`).
+
+This requires the gateway to be up and running, so should be called only once the `onGatewayReady` callback has been invoked.  If you want to broadcast the text message to any listening routers, use `gateway.BROADCAST_ALL_ADDRESS` as the destination value.  Use `gateway.BROADCAST_LOCAL_ADDRESS` to broadcast to local neighboring devices only.
+
+### Receiving an RS-485 Response Message
+
+`rs485Response` messages arrive into the `onSensorMessage` callback function like any other messages from sensors:
+
+```javascript
+const gateway = require('conectric-usb-gateway');
+
+gateway.runGateway({
+    onSensorMessage: (sensorMessage) => {
+        if (sensorMessage.messageType === 'rs485Response') {
+          console.log(sensorMessage.payload.rs485);
+        }
+    },
+    onGatewayReady: () => {
+        console.log('Gateway is ready.');
+        // Send an rs485 message here...
+    }
+});
+```
+
+The data from the RS-485 device will be contained in `sensorMessage.payload.rs485`.  The data's encoding will depend on the RS-485 device.
 
 ## Bundled Examples
 
@@ -592,7 +730,7 @@ And the second computer should report receipt of the message, decode it and log 
 { type: 'text',
   payload: { 
     battery: 3.2, 
-    text: 'Hello World this is a test!' 
+    text: 'Hello World this is a test.' 
   },
   timestamp: 1524285294,
   sensorId: 'ffff',
@@ -600,7 +738,11 @@ And the second computer should report receipt of the message, decode it and log 
 }
 ```
 
-### Example 4: Send an SMS Message Via Twilio API When A Door Opens
+### Example 4: Exchange RS-485 Messages with Another USB Router
+
+An RS-485 example will be provided in a future release.
+
+### Example 5: Send an SMS Message Via Twilio API When A Door Opens
 
 **Location:** `examples/twiliosms`.
 
@@ -646,7 +788,7 @@ Insert the Conectric USB stick into your computer and turn on any door sensors. 
 We also published an overview of how to set up and use this example as an [article on Medium](https://medium.com/conectric-networks/door-open-alerts-with-twilio-and-conectrics-iot-sensor-product-for-node-js-65d67db97584).
 
 
-### Example 5: Post Motion Events to a Slack Channel At A Configurable Minimum Interval
+### Example 6: Post Motion Events to a Slack Channel At A Configurable Minimum Interval
 
 **Location:** `examples/slackmotion`.
 
@@ -683,7 +825,7 @@ Insert the Conectric USB stick into your computer then insert the batteries into
 
 We also published an overview of how to set up and use this example as an [article on Medium](https://medium.com/conectric-networks/movement-alerts-in-slack-with-conectrics-motion-sensor-iot-gateway-for-node-js-fcc77529e210).
 
-### Example 6: Post Temperature Data to Elasticsearch
+### Example 7: Post Temperature Data to Elasticsearch
 
 **Location:** `examples/elastic`.
 

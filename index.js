@@ -13,16 +13,32 @@ const conectricUsbGateway = {
     contikiVersion: undefined,
     conectricVersion: undefined,
 
-    BROADCAST_ADDRESS: 'ffff',
+    BROADCAST_LOCAL_ADDRESS: 'ffff',
+    BROADCAST_ALL_ADDRESS: '0000',
+
+    PARITY_NONE: 'none',
+    PARITY_ODD: 'odd',
+    PARTITY_EVEN: 'even',
     
     MESSAGE_TYPES: {
         '30': 'tempHumidity',
         '31': 'switch',
         '32': 'motion',
-        '37': 'rs485',
+        '36': 'rs485Request',
+        '37': 'rs485Response',
         '60': 'boot',
-        '61': 'text'
+        '61': 'text',
+        '70': 'rs485Config'
     },
+
+    BROADCAST_MESSAGE_TYPES: [
+        '30',
+        '31',
+        '32',
+        '37',
+        '60',
+        '61'
+    ],
 
     PARAM_SCHEMA: Joi.object().keys({
         onSensorMessage: Joi.func().required(),
@@ -34,13 +50,43 @@ const conectricUsbGateway = {
         switchOpenValue: Joi.boolean().optional(),
         deDuplicateBursts: Joi.boolean().optional(),
         decodeTextMessages: Joi.boolean().optional(),
-        debugMode: Joi.boolean().optional()
+        debugMode: Joi.boolean().optional(),
+        sendHopData: Joi.boolean().optional()
     }).required().options({
         allowUnknown: false
     }),
 
     TEXT_MESSAGE_SCHEMA: Joi.object().keys({
         message: Joi.string().min(1).max(250).required(),
+        destination: Joi.string().length(4).required()
+    }).required().options({
+        allowUnknown: false
+    }),
+
+    RS485_MESSAGE_SCHEMA: Joi.object().keys({
+        message: Joi.string().min(1).max(250).required(),
+        destination: Joi.string().length(4).required(),
+        hexEncodePayload: Joi.boolean().optional()
+    }).required().options({
+        allowUnknown: false
+    }),
+
+    RS485_CONFIG_MESSAGE_SCHEMA: Joi.object().keys({
+        baudRate: Joi.number().valid(
+            2400, 
+            4800, 
+            9600,
+            19200
+        ),
+        parity: Joi.string().valid(
+            'none',
+            'odd',
+            'even'
+        ),
+        stopBits: Joi.number().valid(
+            1, 
+            2
+        ),
         destination: Joi.string().length(4).required()
     }).required().options({
         allowUnknown: false
@@ -178,6 +224,10 @@ const conectricUsbGateway = {
         return false;
     },
 
+    isBroadcastMessageType: (messageType) => {
+        return conectricUsbGateway.BROADCAST_MESSAGE_TYPES.includes(messageType);
+    },
+
     findRouterDevice: () => {
         return new Promise((resolve, reject) => {
             serialport.list((err, ports) => {
@@ -270,6 +320,105 @@ const conectricUsbGateway = {
         return true;
     },
 
+    sendRS485Request: (params) => {
+        const validationResult = Joi.validate(params, conectricUsbGateway.RS485_MESSAGE_SCHEMA);
+
+        if (validationResult.error) {
+            console.error(validationResult.error.message);
+            return false;
+        }
+
+        // hexEncodePayload is on by default
+        if (! params.hasOwnProperty('hexEncodePayload')) {
+            params.hexEncodePayload = true;
+        }
+
+        let encodedPayload;
+        
+        if (params.hexEncodePayload) {
+            if (conectricUsbGateway.params.debugMode) {
+                console.log('Hex encoding outbound RS485 request message.');
+            }
+            encodedPayload = conectricUsbGateway.hexEncode(params.message);
+        } else {
+            encodedPayload = params.message;
+        }
+
+        // length:
+        // 1 for the message type
+        // 1 for the length
+        // 2 for the destination
+        // 1 for the reserved part
+        // 1 for each letter in the message if encoding
+        let msgLen = 5 + (params.hexEncodePayload ? params.message.length : params.message.length / 2);
+        let hexLen = msgLen.toString(16);
+
+        if (hexLen.length === 1) {
+            hexLen = `0${hexLen}`;
+        }
+
+        let outboundMessage = `<${hexLen}36${params.destination}01${encodedPayload}`;
+                
+        if (conectricUsbGateway.params.debugMode) {
+            console.log(`Outbound RS485 request: ${outboundMessage}`);
+        }
+
+        conectricUsbGateway.serialPort.write(`${outboundMessage}\n`);
+
+        return true;
+    },
+
+    sendRS485ConfigMessage: (params) => {
+        const validationResult = Joi.validate(params, conectricUsbGateway.RS485_CONFIG_MESSAGE_SCHEMA);
+
+        if (validationResult.error) {
+            console.error(validationResult.error.message);
+            return false;
+        }   
+
+        let baudRate;
+
+        switch (params.baudRate) {
+            case 2400:
+                baudRate = '00';
+                break;
+            case 4800:
+                baudRate = '01';
+                break;
+            case 9600:
+                baudRate = '02';
+                break;
+            case 19200:
+                baudRate = '03';
+                break;
+        }
+
+        let parity;
+
+        switch (params.parity) {
+            case conectricUsbGateway.PARITY_NONE:
+                parity = '00';
+                break;
+            case conectricUsbGateway.PARITY_ODD:
+                parity = '01';
+                break;
+            case conectricUsbGateway.PARITY_EVEN:
+                parity = '02';
+                break;
+        }
+
+        const stopBits = (params.stopBits === 1 ? '00' : '01');
+
+        let outboundMessage = `<0870${params.destination}01${baudRate}${parity}${stopBits}`;
+
+        if (conectricUsbGateway.params.debugMode) {
+            console.log(`Outbound RS485 config message: ${outboundMessage}`);
+        }
+
+        conectricUsbGateway.serialPort.write(`${outboundMessage}\n`);
+        return true;
+    },
+
     parseMessage: (data) => {
         if (conectricUsbGateway.params.debugMode) {
             console.log(data);
@@ -329,6 +478,20 @@ const conectricUsbGateway = {
             sensorId: sourceAddr,
             sequenceNumber: sequenceNumber
         };
+
+        if (conectricUsbGateway.isBroadcastMessageType(messageType)) {
+            // Broadcast message detected add extra fields.
+            if (conectricUsbGateway.params.debugMode) {
+                console.log(`Message type "${messageType}" is a broadcast message type.`);
+            }
+
+            if (conectricUsbGateway.params.sendHopData) {
+                message.numHops = parseInt(data.substring(4, 6), 16);
+                message.maxHops = parseInt(data.substring(6, 8), 16);
+            }
+        } else if (conectricUsbGateway.params.debugMode) {
+            console.log(`Message type "${messageType}" is not a broadcast message type.`);
+        }
 
         if (conectricUsbGateway.params.sendRawData) {
             message.rawData = data;
@@ -396,8 +559,78 @@ const conectricUsbGateway = {
                         // Not sending boot message to callback.
                         return;
                     }
+                case 'rs485Config':
+                    if (messageData.length !== 6) {
+                        if (conectricUsbGateway.params.debugMode) {
+                            console.error(`Ignoring rs485Config message with payload length ${messageData.length}, was expecting length 6.`);
+                        }
+
+                        return;
+                    }
+
+                    let baudRate = messageData.substring(0, 2);
+                    let parity = messageData.substring(2, 4);
+                    let stopBits = messageData.substring(4);
+
+                    // TODO decode
+                    message.payload.stopBits = stopBits;
+
+                    switch (baudRate) {
+                        case '00':
+                            message.payload.baudRate = '2400';
+                            break;
+                        case '01':
+                            message.payload.baudRate = '4800';
+                            break;
+                        case '02':
+                            message.payload.baudRate = '9600';
+                            break;
+                        case '03':
+                            message.payload.baudRate = '19200';
+                            break;
+                        default:
+                            message.payload.baudRate = '?';
+                            if (conectricUsbGateway.params.debugMode) {
+                                console.error(`Invalid baudRate received in rs485Config message, hex was "${baudRate}".`);
+                            }
+                    }
+
+                    switch (parity) {
+                        case '00':
+                            message.payload.parity = conectricUsbGateway.PARITY_NONE;
+                            break;
+                        case '01':
+                            message.payload.parity = conectricUsbGateway.PARITY_ODD;
+                            break;
+                        case '02':
+                            message.payload.parity = conectricUsbGateway.PARITY_EVEN;
+                            break;
+                        default:
+                            message.payload.parity = '?';
+                            if (conectricUsbGateway.params.debugMode) {
+                                console.error(`Invalid parity received in rs485Config message, hex was "${parity}".`);
+                            }
+                    }
+
+                    switch (stopBits) {
+                        case '00':
+                            message.payload.stopBits = 1;
+                            break;
+                        case '01':
+                            message.payload.stopBits = 2;
+                            break;
+                        default:
+                            message.payload.stopBits = -1;
+                            if (conectricUsbGateway.params.debugMode) {
+                                console.error(`Invalid stopBits received in rs485Config message, hex was "${stopBits}".`);
+                            }
+                    }
+            
                     break;
-                case 'rs485':
+                case 'rs485Request':
+                    message.payload.data = messageData;
+                    break;
+                case 'rs485Response':
                     message.payload.battery = battery;
                     message.payload.rs485 = messageData;
                     break;

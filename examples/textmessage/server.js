@@ -17,7 +17,7 @@ gateway.runGateway({
     onGatewayReady: () => {
         console.log('Gateway is ready.');
         const res = gateway.sendTextMessage({
-            message: 'Hello World this is a test!',
+            message: 'Hello World this is a test.',
             destination: DESTINATION_ROUTER_ADDR
         });
 
