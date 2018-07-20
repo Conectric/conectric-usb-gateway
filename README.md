@@ -131,6 +131,7 @@ Each message has a set of common keys.  Others only appear when certain gateway 
 * `sequenceNumber`: (always present) The message sequence number -- do not rely on these to arrive in order, or be unique, as the sequence number will reset over time or if the sensor's battery is removed and replaced.  You should **not** use a combination of `sequenceNumber` and `sensorId` as a unique message key.
 * `type`: (always present) indicates which type of message was received, values are:
     * `boot`
+    * `keepAlive`
     * `motion`
     * `rs485Config`
     * `rs485Request`
@@ -166,6 +167,26 @@ The `payload` for the `boot` message consists of the following keys:
     * `unknown`: Catch all value, which should never appear.
 
 If your application does not need to see these messages, they can be suppressed using the `sendBootMessages` configuration option.  See the [Configuration Options](#configuration-options) for details.
+
+### keepAlive
+
+This message is sent periodically by sensors to indicate that they are still alive.  For example, without a door being opened or closed a switch sensor may not need to send an event message for a very long time, so a `keepAlive` serves as proof that it is still listening, has battery and is attached to the network.
+
+The message JSON looks like this:
+
+```json
+{ 
+  "type": "keepAlive",
+  "payload": { 
+    "battery": 3.1 
+  },
+  "timestamp": 1531977054,
+  "sensorId": "15f0",
+  "sequenceNumber": 26 
+}
+```
+
+Delivery of these messages to the callback function is disabled by default.  If your application needs to receive them, they can be enabled using the `sendKeepAliveMessages` configuration option. See the [Configuration Options](#configuration-options) for details. 
 
 ### motion
 
@@ -430,6 +451,14 @@ If `true`, messages supplied to the `onSensorData` callback will contain two ext
 * Possible values: `true | false`
 * Optional: yes
 * Default: `false`
+
+### sendKeepAliveMessages
+
+If `true`, `keepAlive` messages will be passed to the `onSensorData` callback. 
+
+* Possible values: `true | false`
+* Optional: yes
+* Default: false
 
 ### sendRawData
 

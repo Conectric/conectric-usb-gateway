@@ -24,6 +24,7 @@ const conectricUsbGateway = {
         '30': 'tempHumidity',
         '31': 'switch',
         '32': 'motion',
+        '33': 'keepAlive',
         '36': 'rs485Request',
         '37': 'rs485Response',
         '60': 'boot',
@@ -35,6 +36,7 @@ const conectricUsbGateway = {
         '30',
         '31',
         '32',
+        '33',
         '37',
         '60',
         '61'
@@ -45,6 +47,7 @@ const conectricUsbGateway = {
         onGatewayReady: Joi.func().optional(),
         sendRawData: Joi.boolean().optional(),
         sendBootMessages: Joi.boolean().optional(),
+        sendKeepAliveMessages: Joi.boolean().optional(),
         sendDecodedPayload: Joi.boolean().optional(),
         useFahrenheitTemps: Joi.boolean().optional(),
         switchOpenValue: Joi.boolean().optional(),
@@ -92,7 +95,7 @@ const conectricUsbGateway = {
         allowUnknown: false
     }),
 
-    IGNORABLE_MESSAGE_TYPES: [ '33', '34', '35' ],
+    IGNORABLE_MESSAGE_TYPES: [ '34', '35' ],
 
     KNOWN_COMMANDS: [ 'DP', 'MR', 'SS', 'VER' ],
 
@@ -533,6 +536,15 @@ const conectricUsbGateway = {
                     message.payload.battery = battery;
                     message.payload.switch = (conectricUsbGateway.params.switchOpenValue ? (messageData === '71') : (messageData === '72'));
                     break;
+                case 'keepAlive':
+                    if (conectricUsbGateway.params.sendKeepAliveMessages) {
+                        message.payload.battery = battery;
+                    } else {
+                        // Not sending keepAlive message to callback.
+                        return;
+                    }
+
+                    break;
                 case 'boot': 
                     if (conectricUsbGateway.params.sendBootMessages) {
                         message.payload.battery = battery;
@@ -559,6 +571,8 @@ const conectricUsbGateway = {
                         // Not sending boot message to callback.
                         return;
                     }
+
+                    break; // TODO test boot messages as this was absent before!
                 case 'rs485Config':
                     if (messageData.length !== 6) {
                         if (conectricUsbGateway.params.debugMode) {
