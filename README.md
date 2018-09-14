@@ -134,6 +134,9 @@ Each message has a set of common keys.  Others only appear when certain gateway 
     * `keepAlive`
     * `motion`
     * `rs485Config`
+    * `rs485ChunkEnvelopeResponse`,
+    * `rs485ChunkRequest`,
+    * `rs485ChunkResponse`,
     * `rs485Request`
     * `rs485Response`
     * `switch`
@@ -209,6 +212,58 @@ The `payload` for the `motion` message consists of the following keys:
 
 * `battery`: The sensor's battery level in volts.
 * `motion`: Will always be `true` as the sensor only fires when motion is detected.
+
+### rs485ChunkEnvelopeResponse
+
+This message is sent in response to an `rs485Request` message, in the case where the data being return is > 64 bytes and has been split up for tranport on the mesh network.
+
+This message contains information on the number and size of chunks that the data was brokwn down into.
+
+The message JSON looks like:
+
+```json
+{ 
+  "type": "rs485ChunkEnvelopeResponse",
+  "payload": { 
+    "battery": 3.1, 
+    "numChunks": 4, 
+    "chunkSize": 64 
+  },
+  "timestamp": 1536903474,
+  "sensorId": "e17b",
+  "sequenceNumber": 39 
+}
+```
+The `payload` for the `rs485ChunkEnvelopeResponse` message consists of the following keys:
+
+* `battery`: The sensor's battery level in volts.
+* `numChunks`: The number of chunks that the complete response payload has been broken up into.
+* `chunkSize`: The size in bytes of each chunk.
+
+Information from the payload would then be used to send `rs485ChunkRequest` messages to ask the remote device to send each chunk across the network until all are received and can be re-assembled into the original message.
+
+### rs485ChunkResponse
+
+This message is sent in response to an `rs485ChunkRequest` message, and contains a single chunk of a larger complete response that was broken down for transport over the mesh network.
+
+The message JSON looks like:
+
+```json
+{
+  "type": "rs485ChunkResponse",
+  "payload": { 
+    "battery": 3.1,
+    "data": "021022173..." 
+  },
+  "timestamp": 1536903735,
+  "sensorId": "e17b",
+  "sequenceNumber": 45 
+}
+```
+The `payload` for the `rs485ChunkResponse` message consists of the following keys:
+
+* `battery`: The sensor's battery level in volts.
+* `data`: Raw data from the device sending the message.
 
 ### rs485Response
 
@@ -559,6 +614,7 @@ The following parameters are all required when using `sendRS485ConfigMessage`:
 * `baudRate`: Valid values are `2400`, `4800`, `9600`, `19200`.
 * `parity`: Valid values are `gateway.PARITY_NONE`, `gateway.PARITY_ODD` and `gateway.PARITY_EVEN`.
 * `stopBits`: Valid values are `1` and `2`.
+* `bitMask`: Valid values are `8` and `7`.
 * `destination`: The last 4 characters of the MAC address of the device that the message is destined for e.g. `da40`. 
 
 ```javascript
@@ -574,6 +630,7 @@ gateway.runGateway({
           baudRate: 4800,
           parity: gateway.PARITY_NONE,
           stopBits: 1,
+          bitMask: 7,
           destination: 'da40'
         });
 
@@ -640,6 +697,55 @@ gateway.runGateway({
 ```
 
 The data from the RS-485 device will be contained in `sensorMessage.payload.rs485`.  The data's encoding will depend on the RS-485 device.
+
+### Receiving a Chunked RS-485 Response Message
+
+When sending an `rs485Request`, the response may sometimes contain a data payload that is too large to be transmitted over the mesh network in a single message.  In this case the RS-485 sensor will break it down into chunks.  Instead of replying with an `rs485Response` message, it will reply with a `rs485ChunkEnvelopeResponse`.  This message contains details of how many chunks are needed to transmit the message, and what the size of each chunk is:
+
+```json
+{ 
+  "type": "rs485ChunkEnvelopeResponse",
+  "payload": { 
+    "battery": 3.1, 
+    "numChunks": 4, 
+    "chunkSize": 64 
+  },
+  "timestamp": 1536903474,
+  "sensorId": "e17b",
+  "sequenceNumber": 39 
+}
+```
+
+Using the values in `payload.numChunks` and `payload.chunkSize`, you can then send an `rs485ChunkRequest` message back to the RS-485 sensor for the first chunk (chunks are 0 indexed, so to get 4 we would use 0-3):
+
+```javascript
+    gateway.sendRS485ChunkRequest({
+        chunkNumber: 0,
+        chunkSize: msg.payload.chunkSize,
+        destination: msg.sensorId
+    });
+```
+
+The RS-485 sensor will respond with a `rs485ChunkResponse` message which looks like this and contains the first part of the data:
+
+```json
+{
+  "type": "rs485ChunkResponse",
+  "payload": { 
+    "battery": 3.1,
+    "data": "021022173..." 
+  },
+  "timestamp": 1536903735,
+  "sensorId": "e17b",
+  "sequenceNumber": 45 
+}
+```
+
+You would then repeat this process for chunks 1..3 and once all 4 chunks are retrieved, you can assemble the complete data packet.
+
+While sending and receiving `rs485ChunkRequest` and `rs485ChunkResponse` messages, you should **not** send another `rs485Request` to the same sensor, as this will cause it to exit the chunking process on its side, and begin a new request/response cycle.
+
+Full demo code for this process can be found in `examples/ekm`.
 
 ## Bundled Examples
 
@@ -897,6 +1003,61 @@ npm start
 Insert the Conectric USB stick into your computer.  After a short while you should see temperature and humidity readings appear in Elasticsearch from any Conectric temperature sensors that you have nearby.
 
 We also published an overview of how to set up and use this example as an [article on Medium](https://medium.com/conectric-networks/visualizing-room-climate-data-with-conectrics-iot-sensors-elasticsearch-grafana-3254265bf35a).
+
+### Example 8: Receiving Chunked RS-485 Messages
+
+**Location:** `examples/ekm`.
+
+**Sensors Required:** RS-485 plus EKM Omnimeter v3 or v4.
+
+**Description:** This example demonstrates how to read data from EKM's Omnimeter sub-metering product using the RS-485 data chunking messages.  It supports two different versions of the meter.  With the v3 meter, all of the data can be read in a single request / chunked response cycle.  The v4 meter provides more data, and required two request / chunked response cycles.
+
+Both v3 and v4 demos return raw data from the meter, which would need further decoding according to EKM's documentation.
+
+**Usage:** Before starting up this example, you will need to:
+
+* Have an EKM Omnimeter (version 3 or 4).
+* Connect the meter to the RS-485 sensor.
+
+Next setup the code:
+
+```shell
+mkdir ekmmeter
+cd ekmmeter
+npm init
+```
+
+Accept all the defaults, except "entry point", use `server.js` for that.  Then:
+
+```shell
+npm install --save conectric-usb-gateway
+```
+
+If you have a v3 meter:
+
+```shell
+cp node_modules/conectric-usb-gateway/examples/ekm/omnimeter-v3/server.js .
+```
+
+If using a v4 meter, do this instead:
+
+```shell
+node_modules/conectric-usb-gateway/examples/ekm/omnimeter-v4/server.js .
+```
+
+Then edit `server.js`, replacing `dfbc` with the 4 character MAC address of your RS-485 sensor.  Also set the value of the constant `METER_SERIAL_NUMBER_HEX` with the encoded serial number for your meter.
+
+To work out your meter's encoded serial number, take each digit of the serial number including leading 0's and put a 3 in front of it.  For example 0 becomes 30, 2 becomes 32 up to 9 becoming 39.
+
+Having done that and saved your changes, start the demo:
+
+```shell
+npm start
+```
+
+Insert the Conectric USB stick into your computer.  You should see the code recognize this and send a message to read the meter, logging the reply.
+
+We have also produced [a separate demo](https://github.com/Conectric/node-ekm-meter-demo) that decodes the reply into a JavaScript object.
 
 ## Power Management Tips
 

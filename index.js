@@ -27,6 +27,9 @@ const conectricUsbGateway = {
         '33': 'keepAlive',
         '36': 'rs485Request',
         '37': 'rs485Response',
+        '38': 'rs485ChunkRequest',
+        '39': 'rs485ChunkResponse',
+        '42': 'rs485ChunkEnvelopeResponse',
         '60': 'boot',
         '61': 'text',
         '70': 'rs485Config'
@@ -38,6 +41,8 @@ const conectricUsbGateway = {
         '32',
         '33',
         '37',
+        '39',
+        '42',
         '60',
         '61'
     ],
@@ -74,6 +79,14 @@ const conectricUsbGateway = {
         allowUnknown: false
     }),
 
+    RS485_CHUNKED_MESSAGE_SCHEMA: Joi.object().keys({
+        chunkNumber: Joi.number().integer().min(0).required(),
+        chunkSize: Joi.number().integer().min(1).required(),
+        destination: Joi.string().length(4).required()
+    }).required().options({
+        allowUnknown: false
+    }),
+
     RS485_CONFIG_MESSAGE_SCHEMA: Joi.object().keys({
         baudRate: Joi.number().valid(
             2400, 
@@ -89,6 +102,10 @@ const conectricUsbGateway = {
         stopBits: Joi.number().valid(
             1, 
             2
+        ),
+        bitMask: Joi.number().valid(
+            7,
+            8
         ),
         destination: Joi.string().length(4).required()
     }).required().options({
@@ -323,14 +340,7 @@ const conectricUsbGateway = {
         return true;
     },
 
-    sendRS485Request: (params) => {
-        const validationResult = Joi.validate(params, conectricUsbGateway.RS485_MESSAGE_SCHEMA);
-
-        if (validationResult.error) {
-            console.error(validationResult.error.message);
-            return false;
-        }
-
+    _sendRS485Message: (params) => {
         // hexEncodePayload is on by default
         if (! params.hasOwnProperty('hexEncodePayload')) {
             params.hexEncodePayload = true;
@@ -360,7 +370,7 @@ const conectricUsbGateway = {
             hexLen = `0${hexLen}`;
         }
 
-        let outboundMessage = `<${hexLen}36${params.destination}01${encodedPayload}`;
+        let outboundMessage = `<${hexLen}${params.msgCode}${params.destination}01${encodedPayload}`;
                 
         if (conectricUsbGateway.params.debugMode) {
             console.log(`Outbound RS485 request: ${outboundMessage}`);
@@ -369,6 +379,45 @@ const conectricUsbGateway = {
         conectricUsbGateway.serialPort.write(`${outboundMessage}\n`);
 
         return true;
+    },
+
+    sendRS485ChunkRequest: (params) => {
+        const validationResult = Joi.validate(params, conectricUsbGateway.RS485_CHUNKED_MESSAGE_SCHEMA);
+
+        if (validationResult.error) {
+            console.error(validationResult.error.message);
+            return false;
+        }
+        
+        params.msgCode = 38;
+
+        let chunkNumberHex = params.chunkNumber.toString(16);
+
+        if (chunkNumberHex.length === 1) {
+            chunkNumberHex = `0${chunkNumberHex}`;
+        }
+
+        let chunkSizeHex = params.chunkSize.toString(16);
+
+        if (chunkSizeHex.length === 1) {
+            chunkSizeHex = `0${chunkSizeHex}`;
+        }
+
+        params.message = `${chunkNumberHex}${chunkSizeHex}`;
+        params.hexEncodePayload = false;
+        return conectricUsbGateway._sendRS485Message(params);
+    },
+
+    sendRS485Request: (params) => {
+        const validationResult = Joi.validate(params, conectricUsbGateway.RS485_MESSAGE_SCHEMA);
+
+        if (validationResult.error) {
+            console.error(validationResult.error.message);
+            return false;
+        }
+
+        params.msgCode = 36;
+        return conectricUsbGateway._sendRS485Message(params);
     },
 
     sendRS485ConfigMessage: (params) => {
@@ -411,8 +460,9 @@ const conectricUsbGateway = {
         }
 
         const stopBits = (params.stopBits === 1 ? '00' : '01');
+        const bitMask = (params.bitMask === 8 ? '00' : '01');
 
-        let outboundMessage = `<0870${params.destination}01${baudRate}${parity}${stopBits}`;
+        let outboundMessage = `<0970${params.destination}01${baudRate}${parity}${stopBits}${bitMask}`;
 
         if (conectricUsbGateway.params.debugMode) {
             console.log(`Outbound RS485 config message: ${outboundMessage}`);
@@ -572,11 +622,11 @@ const conectricUsbGateway = {
                         return;
                     }
 
-                    break; // TODO test boot messages as this was absent before!
+                    break;
                 case 'rs485Config':
-                    if (messageData.length !== 6) {
+                    if (messageData.length !== 7) {
                         if (conectricUsbGateway.params.debugMode) {
-                            console.error(`Ignoring rs485Config message with payload length ${messageData.length}, was expecting length 6.`);
+                            console.error(`Ignoring rs485Config message with payload length ${messageData.length}, was expecting length 7.`);
                         }
 
                         return;
@@ -584,10 +634,8 @@ const conectricUsbGateway = {
 
                     let baudRate = messageData.substring(0, 2);
                     let parity = messageData.substring(2, 4);
-                    let stopBits = messageData.substring(4);
-
-                    // TODO decode
-                    message.payload.stopBits = stopBits;
+                    let stopBits = messageData.substring(4, 6);
+                    let bitMask = messageData.substring(6);
 
                     switch (baudRate) {
                         case '00':
@@ -639,6 +687,20 @@ const conectricUsbGateway = {
                                 console.error(`Invalid stopBits received in rs485Config message, hex was "${stopBits}".`);
                             }
                     }
+
+                    switch (bitMask) {
+                        case '00':
+                            message.payload.bitMask = 8;
+                            break;
+                        case '01':
+                            message.payload.bitMask = 7;
+                            break;
+                        default:
+                            message.payload.bitMask = -1;
+                            if (conectricUsbGateway.params.debugMode) {
+                                console.error(`Invalid bitMask received in rs485Config message, hex was "${bitMask}".`);
+                            }
+                    }
             
                     break;
                 case 'rs485Request':
@@ -647,6 +709,15 @@ const conectricUsbGateway = {
                 case 'rs485Response':
                     message.payload.battery = battery;
                     message.payload.rs485 = messageData;
+                    break;
+                case 'rs485ChunkEnvelopeResponse':
+                    message.payload.battery = battery;
+                    message.payload.numChunks = parseInt(messageData.substring(0, 2), 16);
+                    message.payload.chunkSize = parseInt(messageData.substring(2), 16);
+                    break;
+                case 'rs485ChunkResponse':
+                    message.payload.battery = battery;
+                    message.payload.data = messageData;
                     break;
                 case 'text':
                     message.payload.battery = battery;
