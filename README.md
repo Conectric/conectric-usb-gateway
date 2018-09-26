@@ -14,8 +14,6 @@ Our introductory video provides a quick overview of the product.
 
 We also published an [overview on Medium](https://medium.com/conectric-networks/announcing-conectrics-usb-iot-gateway-sensor-product-86087af7ae57).
 
-You can find details of the mesh network protocol site [on GitHub](https://github.com/ekawahyu/contiki/blob/develop/examples/conectric/README.md).
-
 ## Hardware Requirements
 
 In order to use this module, you will require:
